@@ -83,18 +83,18 @@ Definition eqb_key (k0 k1: key): bool :=
   | _, _ => false
   end.
 
-Theorem key_eq_eqb (k0 k1: key):
-  k0 = k1 <-> eqb_key k0 k1 = true.
+Theorem key_eqb_eq (k0 k1: key):
+  eqb_key k0 k1 = true <-> k0 = k1.
 Proof.
-  split; [intros <- | intros Hb].
-  { destruct k0 as [n0 | n0 | n0]; simpl;
-      rewrite Nat.eqb_eq;
-      reflexivity. }
+  split; [intros Hb | intros <-].
   { destruct k0 as [n0 | n0 | n0],
       k1 as [n1 | n1 | n1];
       simpl in Hb; try (discriminate Hb);
       rewrite Nat.eqb_eq in Hb;
       subst; reflexivity. }
+  { destruct k0 as [n0 | n0 | n0]; simpl;
+      rewrite Nat.eqb_eq;
+      reflexivity. }
 Qed.
 
 Definition kinverse (k: key): key :=
@@ -151,7 +151,7 @@ Proof.
     | apply kinverse_surjective].
 Qed.
 
-Inductive data (T: Set): Set :=
+Inductive data (T: Type): Type :=
 | value : T -> data T
 | kval : key -> data T
 | kapply : key -> data T -> data T
@@ -164,43 +164,10 @@ Arguments kapply {T} _ _.
 Arguments hash {T} _.
 Arguments pair {T} _ _.
 
-Theorem data_decidable {T: Set}:
-  (forall (t0 t1: T), { t0 = t1 }+{ t0 <> t1 }) ->
-  forall (d0 d1: data T), { d0 = d1 }+{ d0 <> d1 }.
-Proof.
-  intros HTdec.
-  induction d0 as [t0 | k0 | k0 d0 IHd0 | d0 IHd0 | d00 IHd00 d01 IHd01],
-    d1 as [t1 | k1 | k1 d1 | d1 | d10 d11];
-  try (right; discriminate).
-  { case (HTdec t0 t1);
-    [intros <-; left; reflexivity
-    | intros; right; injection;
-        contradiction]. }
-  { case (key_decidable k0 k1);
-    [intros <-; left; reflexivity
-    | intros Hneq; right; injection;
-        contradiction]. }
-  { case (key_decidable k0 k1);
-    [intros <-
-    | intros; right; injection; contradiction].
-    case (IHd0 d1);
-    [intros <-; left; reflexivity
-    | intros; right; injection; contradiction]. }
-  { case (IHd0 d1);
-    [intros <-; left; reflexivity
-    | intros; right; injection; contradiction]. }
-  { case (IHd00 d10);
-    [intros <-
-    | intros; right; injection; contradiction].
-    case (IHd01 d11);
-    [intros <-; left; reflexivity
-    | intros; right; injection; contradiction]. }
-Qed.
-
-Definition sign {T: Set}(d: data T)(k: key): data T :=
+Definition sign {T: Type}(d: data T)(k: key): data T :=
   pair d (kapply k (hash d)).
 
-Definition check {T: Set}(d: data T)(k: key): Prop :=
+Definition check {T: Type}(d: data T)(k: key): Prop :=
   match d with
   | pair d' s' =>
     match s' with
@@ -211,16 +178,9 @@ Definition check {T: Set}(d: data T)(k: key): Prop :=
   | _ => False
   end.
 
-Eval compute in (sign (value 1) (private 1)).
-Example ex1:
-  check (sign (value 1) (private 1)) (public 1).
-Proof.
-  firstorder.
-Qed.
-
 (** Verify signature checking and signing *)
 
-Theorem sig_check {T: Set}(d: data T)(k1 k2: key):
+Theorem sig_check {T: Type}(d: data T)(k1 k2: key):
   k1 = kinverse k2 ->
   check (sign (value d) k1) k2.
 Proof.
@@ -230,7 +190,7 @@ Proof.
   auto with crypto.
 Qed.
 
-Theorem sign_only {T: Set}(d0: data T)(k0: key):
+Theorem sign_only {T: Type}(d0: data T)(k0: key):
   check d0 k0 ->
   exists (d1: data T)(k1: key),
     sign d1 k1 = d0 /\ k0 = kinverse k1.
@@ -250,31 +210,27 @@ Qed.
 (** [recoverable0] takes a data element [d] and appends a list of new data
   that is recoverable from [d] to [d]. *)
   
-Fixpoint recoverable0 {T: Set}(d: data T): list (data T) :=
+Fixpoint recoverable0 {T: Type}(d: data T): list (data T) :=
   cons d (match d with
     | kapply _ d => recoverable0 d
     | pair d1 d2 => app (recoverable0 d1) (recoverable0 d2)
     | _ => nil
     end).
 
-Eval compute in recoverable0 (sign (value 1) (private 1)).
-
 (** [recoverable] takes a list of data [dset] and walks the list with
   [recoverable0] to create a list of all data recoverable from the list
   of data.  This is effectively a fold of [recoverable0] over the input
   [dset] *)
 
-Fixpoint recoverable {T: Set}(dset: list (data T)): list (data T) :=
+Fixpoint recoverable {T: Type}(dset: list (data T)): list (data T) :=
   match dset with
   | nil => nil
   | cons h t => app (recoverable0 h) (recoverable t)
   end.
 
-Eval compute in recoverable (cons (sign (value 1) (private 1)) nil).
-
 (** This is dorky *)
 
-Theorem recoverable_from_single {T: Set}(d: data T)(dset: list (data T)):
+Theorem recoverable_from_single {T: Type}(d: data T)(dset: list (data T)):
   In d (recoverable dset) ->
   exists (d0: data T), In d (recoverable0 d0).
 Proof.
@@ -287,7 +243,7 @@ Qed.
 
 (* Hint Resolve app_nil_r. *)
 
-Theorem recoverable_single {T: Set}(d: data T):
+Theorem recoverable_single {T: Type}(d: data T):
   recoverable (cons d nil) = recoverable0 d.
 Proof.
   intros.
@@ -296,14 +252,14 @@ Proof.
 Qed.
 
 (* Theorem recoverable_subterm: forall d dset, In d (recoverable dset) -> exists d0 *)
-Lemma recoverable0_self {T: Set}(d: data T):
+Lemma recoverable0_self {T: Type}(d: data T):
   In d (recoverable0 d).
 Proof.
   destruct d; simpl;
   left; reflexivity.
 Qed.
 
-Lemma recoverable0_kapply {T: Set}(k: key)(d0 d1: data T):
+Lemma recoverable0_kapply {T: Type}(k: key)(d0 d1: data T):
   In (kapply k d0) (recoverable0 d1) ->
   In d0 (recoverable0 d1).
 Proof.
@@ -325,7 +281,7 @@ Proof.
       right; trivial. } }
 Qed.
 
-Lemma recoverable0_pair {T: Set}(d0 d1 d2: data T):
+Lemma recoverable0_pair {T: Type}(d0 d1 d2: data T):
   In (pair d0 d1) (recoverable0 d2) ->
   In d0 (recoverable0 d2) /\ In d1 (recoverable0 d2).
 Proof.
@@ -353,7 +309,7 @@ Proof.
         right; trivial. } }
 Qed.
 
-Theorem in_recoverable0_transitive {T: Set}(d0 d1 d2: data T):
+Theorem in_recoverable0_transitive {T: Type}(d0 d1 d2: data T):
   In d0 (recoverable0 d1) ->
   In d1 (recoverable0 d2) ->
   In d0 (recoverable0 d2).
@@ -377,7 +333,7 @@ Proof.
     { apply IHd1_2; trivial. } }
 Qed.
 
-Theorem in_recoverable0_in_recoverable {T: Set}(d0 d1: data T)(ds: list (data T)):
+Theorem in_recoverable0_in_recoverable {T: Type}(d0 d1: data T)(ds: list (data T)):
   In d0 (recoverable0 d1) ->
   In d1 ds ->
   In d0 (recoverable ds).
@@ -390,7 +346,7 @@ Proof.
     trivial.
 Qed.
 
-Theorem recoverable_increasing {T: Set}(ds: list (data T)):
+Theorem recoverable_increasing {T: Type}(ds: list (data T)):
   forall (d: data T),
     In d ds ->
     In d (recoverable ds).
@@ -407,7 +363,7 @@ Proof.
     right; trivial. }
 Qed.
 
-Theorem in_recoverable_singleton {T: Set}(d: data T)(ds: list (data T)):
+Theorem in_recoverable_singleton {T: Type}(d: data T)(ds: list (data T)):
   In d (recoverable ds) ->
   exists (d': data T), In d' ds /\ In d (recoverable (d'::nil)).
 Proof.
@@ -428,7 +384,7 @@ Proof.
       trivial. }
 Qed.
 
-Theorem in_recoverable_union {T: Set}(ds0 ds1: list (data T)):
+Theorem in_recoverable_union {T: Type}(ds0 ds1: list (data T)):
   forall (d: data T),
     In d (recoverable (ds0 ++ ds1)) <->
     In d (recoverable ds0) \/ In d (recoverable ds1).
@@ -462,14 +418,14 @@ Proof.
         right; trivial. } } }
 Qed.
 
-Lemma recoverable0_recoverable {T: Set}(d: data T):
+Lemma recoverable0_recoverable {T: Type}(d: data T):
   recoverable (d::nil) = recoverable0 d.
 Proof.
   simpl.
   apply app_nil_r.
 Qed.
 
-Lemma in_recoverable_recoverable0 {T: Set}(d: data T):
+Lemma in_recoverable_recoverable0 {T: Type}(d: data T):
   forall (d0: data T),
     In d0 (recoverable (recoverable0 d)) ->
     In d0 (recoverable0 d).
@@ -493,7 +449,7 @@ Proof.
       trivial. }
 Qed.
 
-Theorem in_recoverable_idempotent {T: Set}(ds: list (data T)):
+Theorem in_recoverable_idempotent {T: Type}(ds: list (data T)):
   forall (d: data T),
     In d (recoverable (recoverable ds)) <->
     In d (recoverable ds).
@@ -515,7 +471,7 @@ Proof.
       { right; rewrite IHds; trivial. } } }
 Qed.
 
-Inductive analyzable {T: Set}: list (data T) -> list (data T) -> Prop :=
+(* Inductive analyzable {T: Type}: list (data T) -> list (data T) -> Prop :=
 | analyzable_inj:
   forall (d: data T)(ds an: list (data T)),
     In d ds -> In d an ->
@@ -532,4 +488,4 @@ Inductive analyzable {T: Set}: list (data T) -> list (data T) -> Prop :=
   forall (k: key)(d: data T)(an: list (data T)),
     In (kapply k d) an /\ In (kval (kinverse k)) an ->
     In d an ->
-    forall (ds: list (data T)), analyzable ds an.
+    forall (ds: list (data T)), analyzable ds an. *)
